@@ -15,10 +15,12 @@ namespace cuda {
 // to CUDAGraph::capture_begin
 TORCH_CUDA_CPP_API MempoolId_t graph_pool_handle();
 
+struct TORCH_CUDA_CPP_API CUDAFusedGraph;
 struct TORCH_CUDA_CPP_API CUDAGraph {
   CUDAGraph();
   ~CUDAGraph();
 
+  friend CUDAFusedGraph;
   void capture_begin(MempoolId_t pool={0, 0});
   void capture_end();
   void replay();
@@ -71,6 +73,21 @@ struct TORCH_CUDA_CPP_API CUDAGraph {
   // RNG state trackers
   at::Tensor offset_extragraph_;
   uint64_t wholegraph_increment_;
+};
+
+struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
+  CUDAFusedGraph();
+  ~CUDAFusedGraph();
+  void reset();
+  void extract_nodes(size_t id);  // not encapsulated into python interface
+  void build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph);
+
+private:
+  std::vector<cudaGraph_t> subGraphs_;
+  std::vector<cudaGraphNode_t*> nodes_;
+  std::vector<std::vector<cudaKernelNodeParams*>> nodesParams_;
+  cudaGraph_t bigGraph_;
+  cudaGraphExec_t exec_;
 };
 
 } // namespace cuda

@@ -153,8 +153,8 @@ void CUDAGraph::capture_end() {
 
   // Now that we've instantiated graph_ into graph_exec_,
   // we don't need graph_ anymore.
-  AT_CUDA_CHECK(cudaGraphDestroy(graph_));
-  has_graph_ = false;
+  // AT_CUDA_CHECK(cudaGraphDestroy(graph_));
+  // has_graph_ = false;
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
@@ -242,6 +242,59 @@ MempoolId_t CUDAGraph::pool() {
 }
 
 CUDAGraph::~CUDAGraph() {
+  reset();
+}
+
+CUDAFusedGraph::CUDAFusedGraph() {
+#if (defined(CUDA_VERSION) && CUDA_VERSION < 11000) || defined(USE_ROCM)
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
+}
+
+void CUDAFusedGraph::extract_nodes(size_t id) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  size_t numNodes = 0;
+  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), NULL, &numNodes));
+  cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes);
+  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), curr_nodes, &numNodes));
+
+  std::vector<cudaKernelNodeParams*> curr_np(numNodes, NULL);
+  for (size_t j = 0; j < numNodes; ++j) {
+    cudaGraphKernelNodeGetParams(*(curr_nodes + j), curr_np.at(j));
+  }
+  nodes_.push_back(curr_nodes);
+  nodesParams_.emplace_back(curr_np);
+#else
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
+}
+
+void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  for (auto& g : cuGraph) {
+    subGraphs_.push_back(g->graph_);
+  }
+  cudaGraphCreate(&bigGraph_, 0);
+
+  for (size_t index; index < subGraphs_.size(); ++index) {
+    extract_nodes(index);
+  }
+  
+#else
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
+}
+
+void CUDAFusedGraph::reset() {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 
+  C10_CUDA_CHECK_WARN(cudaGraphDestroy(bigGraph_));
+  C10_CUDA_CHECK_WARN(cudaGraphExecDestroy(exec_));
+#else
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
+}
+
+CUDAFusedGraph::~CUDAFusedGraph() {
   reset();
 }
 

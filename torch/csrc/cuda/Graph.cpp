@@ -48,4 +48,16 @@ void THCPGraph_init(PyObject *module) {
       .def("pool",
            &::at::cuda::CUDAGraph::pool,
            py::call_guard<py::gil_scoped_release>());
+
+  shared_ptr_class_<::at::cuda::CUDAFusedGraph>(torch_C_m, "_CUDAFusedGraph")
+      .def(py::init<>())
+      .def(
+           "reset",
+           &::at::cuda::CUDAFusedGraph::reset,
+           py::call_guard<py::gil_scoped_release>())
+      .def(
+           "build_graph",
+           &::at::cuda::CUDAFusedGraph::build_graph,
+           py::call_guard<py::gil_scoped_release>(),
+           py::arg("cuGraph") = std::vector<std::shared_ptr<::at::cuda::CUDAGraph>>());
 }

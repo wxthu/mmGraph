@@ -11,6 +11,7 @@ if not hasattr(torch._C, '_CudaStreamBase'):
     torch._C.__dict__['_cuda_isCurrentStreamCapturing'] = _dummy_type('_cuda_isCurrentStreamCapturing')
 
 from torch._C import _CUDAGraph  # noqa: F401
+from torch._C import _CUDAFusedGraph  # mmGraph
 from torch._C import _graph_pool_handle
 from torch._C import _cuda_isCurrentStreamCapturing
 
@@ -100,6 +101,18 @@ class CUDAGraph(torch._C._CUDAGraph):
         """
         return super(CUDAGraph, self).pool()
 
+class CUDAFusedGraph(torch._C._CUDAFusedGraph):
+    def __new__(cls):
+        return super(CUDAFusedGraph, cls).__new__(cls)
+
+    def __init__(self):
+        super(CUDAFusedGraph, self).__init__()    
+        
+    def reset(self):
+        super(CUDAFusedGraph, self).reset()
+        
+    def build_graph(self, cuGraph):
+        super(CUDAFusedGraph, self).build_graph(cuGraph)
 
 class graph(object):
     r"""
