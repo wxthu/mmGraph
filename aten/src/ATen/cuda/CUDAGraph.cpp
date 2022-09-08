@@ -253,14 +253,13 @@ CUDAFusedGraph::CUDAFusedGraph() {
 
 void CUDAFusedGraph::extract_nodes(size_t id) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
-  size_t numNodes = 0;
-  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), NULL, &numNodes));
-  cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes);
-  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), curr_nodes, &numNodes));
+  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), NULL, &numNodes_.at(id)));
+  cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes_.at(id));
+  AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), curr_nodes, &numNodes_.at(id)));
 
-  std::vector<cudaKernelNodeParams*> curr_np(numNodes, NULL);
-  for (size_t j = 0; j < numNodes; ++j) {
-    cudaGraphKernelNodeGetParams(*(curr_nodes + j), curr_np.at(j));
+  std::vector<cudaKernelNodeParams*> curr_np(numNodes_.at(id), NULL);
+  for (size_t j = 0; j < numNodes_.at(id); ++j) {
+    AT_CUDA_CHECK(cudaGraphKernelNodeGetParams(*(curr_nodes + j), curr_np.at(j)));
   }
   nodes_.push_back(curr_nodes);
   nodesParams_.emplace_back(curr_np);
@@ -273,12 +272,37 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   for (auto& g : cuGraph) {
     subGraphs_.push_back(g->graph_);
+    numNodes_.push_back(0);
   }
-  cudaGraphCreate(&bigGraph_, 0);
+  AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
 
   for (size_t index; index < subGraphs_.size(); ++index) {
     extract_nodes(index);
   }
+
+  // build fused graph
+  for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
+    for (int j = 0; j < numNodes_.at(i); ++j) {  // each node in current subgraph
+      if (j == 0) {
+        AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i), bigGraph_, NULL, 0, nodesParams_.at(i).at(j)));
+      } else {
+        AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodes_.at(i) + j - 1, 1, nodesParams_.at(i).at(j)));
+      }
+    }
+  }
+
+  if (!create_big_graph_) {
+    AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
+    for (int i = 0; i < nodes_.size(); ++i) {
+      for (int j = 0; j < numNodes_.at(i); ++j) {
+        AT_CUDA_CHECK(cudaGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), nodesParams_.at(i).at(j)));
+      }
+    }
+    create_big_graph_ = true;
+  }
+
+  // TODO: check whether set cuda stream correctly
+  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, at::cuda::getCurrentCUDAStream()));
   
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
@@ -288,7 +312,7 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
 void CUDAFusedGraph::reset() {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000 
   C10_CUDA_CHECK_WARN(cudaGraphDestroy(bigGraph_));
-  C10_CUDA_CHECK_WARN(cudaGraphExecDestroy(exec_));
+  C10_CUDA_CHECK_WARN(cudaGraphExecDestroy(bg_exec_));
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif

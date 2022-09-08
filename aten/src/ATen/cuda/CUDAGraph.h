@@ -85,9 +85,11 @@ struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
 private:
   std::vector<cudaGraph_t> subGraphs_;
   std::vector<cudaGraphNode_t*> nodes_;
+  std::vector<size_t> numNodes_;
   std::vector<std::vector<cudaKernelNodeParams*>> nodesParams_;
   cudaGraph_t bigGraph_;
-  cudaGraphExec_t exec_;
+  cudaGraphExec_t bg_exec_;
+  bool create_big_graph_;
 };
 
 } // namespace cuda
