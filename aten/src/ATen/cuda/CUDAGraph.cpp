@@ -257,12 +257,30 @@ void CUDAFusedGraph::extract_nodes(size_t id) {
   cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes_.at(id));
   AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(id), curr_nodes, &numNodes_.at(id)));
 
-  std::vector<cudaKernelNodeParams*> curr_np(numNodes_.at(id), NULL);
+  NODEParams* curr_np = (NODEParams*)malloc(sizeof(NODEParams) * numNodes_.at(id));
+  cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
   for (size_t j = 0; j < numNodes_.at(id); ++j) {
-    AT_CUDA_CHECK(cudaGraphKernelNodeGetParams(*(curr_nodes + j), curr_np.at(j)));
+    AT_CUDA_CHECK(cudaGraphNodeGetType(*(curr_nodes + j), ntype));
+    switch (*ntype) {
+      case cudaGraphNodeTypeKernel:
+        AT_CUDA_CHECK(cudaGraphKernelNodeGetParams(*(curr_nodes + j), &(curr_np + j)->KernelNp));
+        break;
+      case cudaGraphNodeTypeMemcpy:
+        AT_CUDA_CHECK(cudaGraphMemcpyNodeGetParams(*(curr_nodes + j), &(curr_np + j)->MemcpyNp));
+        break;
+      case cudaGraphNodeTypeMemset:
+        AT_CUDA_CHECK(cudaGraphMemsetNodeGetParams(*(curr_nodes + j), &(curr_np + j)->MemsetNp));
+        break;
+      case cudaGraphNodeTypeHost:
+        AT_CUDA_CHECK(cudaGraphHostNodeGetParams(*(curr_nodes + j), &(curr_np + j)->HostNp));
+        break;
+      default: 
+        printf("unsupported node type : %d when getting params\n", *ntype);
+        break;
+    }
   }
   nodes_.push_back(curr_nodes);
-  nodesParams_.emplace_back(curr_np);
+  nodesParams_.push_back(curr_np);
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
@@ -275,35 +293,74 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
     numNodes_.push_back(0);
   }
   AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
-
-  for (size_t index; index < subGraphs_.size(); ++index) {
+  for (size_t index = 0; index < subGraphs_.size(); ++index) {
     extract_nodes(index);
   }
-
+  
   // build fused graph
+  cudaGraphNode_t* nodeDependencies;
+  size_t dNum = 0;
+  cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
   for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
     for (int j = 0; j < numNodes_.at(i); ++j) {  // each node in current subgraph
-      if (j == 0) {
-        AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i), bigGraph_, NULL, 0, nodesParams_.at(i).at(j)));
-      } else {
-        AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodes_.at(i) + j - 1, 1, nodesParams_.at(i).at(j)));
+      nodeDependencies = j == 0 ? NULL : (nodes_.at(i) + j - 1);
+      dNum = j == 0 ? 0 : 1;
+      AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
+      switch (*ntype) {
+        case cudaGraphNodeTypeKernel:
+          AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->KernelNp));
+          break;
+        case cudaGraphNodeTypeMemcpy:
+          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemcpyNp));
+          break;
+        case cudaGraphNodeTypeMemset:
+          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemsetNp));
+          break;
+        case cudaGraphNodeTypeHost:
+          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->HostNp));
+          break;
+        default:
+          printf("unsupported node type : %d when adding node\n", *ntype);
+          break;
       }
     }
   }
 
+  cudaStream_t strm;
+  cudaStreamCreate(&strm);
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
     for (int i = 0; i < nodes_.size(); ++i) {
       for (int j = 0; j < numNodes_.at(i); ++j) {
-        AT_CUDA_CHECK(cudaGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), nodesParams_.at(i).at(j)));
+        AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
+        switch (*ntype) {
+          case cudaGraphNodeTypeKernel:
+            AT_CUDA_CHECK(cudaGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp));
+            break;
+          case cudaGraphNodeTypeMemcpy:
+            AT_CUDA_CHECK(cudaGraphExecMemcpyNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemcpyNp));
+            break;
+          case cudaGraphNodeTypeMemset:
+            AT_CUDA_CHECK(cudaGraphExecMemsetNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemsetNp));
+            break;
+          case cudaGraphNodeTypeHost:
+            AT_CUDA_CHECK(cudaGraphExecHostNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->HostNp));
+            break;
+          default:
+            printf("unsupported node type : %d when setting params\n", *ntype);
+            break;
+        }
+        
       }
     }
     create_big_graph_ = true;
   }
 
   // TODO: check whether set cuda stream correctly
-  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, at::cuda::getCurrentCUDAStream()));
-  
+  printf("%s\n", cudaGetErrorString(cudaGetLastError()));
+  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, strm));
+  printf("HAS LAUNCH FUSED GRAGH !!!\n");
+
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif

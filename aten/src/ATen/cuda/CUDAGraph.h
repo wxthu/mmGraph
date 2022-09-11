@@ -82,11 +82,19 @@ struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
   void extract_nodes(size_t id);  // not encapsulated into python interface
   void build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph);
 
+  // The number of node type is related to cudatoolkit version
+  union NODEParams {
+    cudaHostNodeParams HostNp;
+    cudaKernelNodeParams KernelNp;
+    cudaMemcpy3DParms MemcpyNp;
+    cudaMemsetParams MemsetNp;
+  };
+
 private:
   std::vector<cudaGraph_t> subGraphs_;
   std::vector<cudaGraphNode_t*> nodes_;
   std::vector<size_t> numNodes_;
-  std::vector<std::vector<cudaKernelNodeParams*>> nodesParams_;
+  std::vector<NODEParams*> nodesParams_;
   cudaGraph_t bigGraph_;
   cudaGraphExec_t bg_exec_;
   bool create_big_graph_;
