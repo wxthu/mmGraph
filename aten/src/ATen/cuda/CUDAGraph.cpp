@@ -259,11 +259,13 @@ void CUDAFusedGraph::extract_nodes(size_t id) {
 
   NODEParams* curr_np = (NODEParams*)malloc(sizeof(NODEParams) * numNodes_.at(id));
   cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
+  CUresult cuStatus;
   for (size_t j = 0; j < numNodes_.at(id); ++j) {
     AT_CUDA_CHECK(cudaGraphNodeGetType(*(curr_nodes + j), ntype));
     switch (*ntype) {
       case cudaGraphNodeTypeKernel:
-        AT_CUDA_CHECK(cudaGraphKernelNodeGetParams(*(curr_nodes + j), &(curr_np + j)->KernelNp));
+        cuStatus = cuGraphKernelNodeGetParams(*(curr_nodes + j), &(curr_np + j)->KernelNp);
+        assert(cuStatus == CUDA_SUCCESS);
         break;
       case cudaGraphNodeTypeMemcpy:
         AT_CUDA_CHECK(cudaGraphMemcpyNodeGetParams(*(curr_nodes + j), &(curr_np + j)->MemcpyNp));
@@ -299,6 +301,7 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
   
   // build fused graph
   cudaGraphNode_t* nodeDependencies;
+  CUresult cuStatus;
   size_t dNum = 0;
   cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
   for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
@@ -308,16 +311,17 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
       AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
       switch (*ntype) {
         case cudaGraphNodeTypeKernel:
-          AT_CUDA_CHECK(cudaGraphAddKernelNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->KernelNp));
+          cuStatus = cuGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->KernelNp);
+          assert(cuStatus == CUDA_SUCCESS);
           break;
         case cudaGraphNodeTypeMemcpy:
-          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemcpyNp));
+          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemcpyNp));
           break;
         case cudaGraphNodeTypeMemset:
-          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemsetNp));
+          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemsetNp));
           break;
         case cudaGraphNodeTypeHost:
-          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i), bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->HostNp));
+          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->HostNp));
           break;
         default:
           printf("unsupported node type : %d when adding node\n", *ntype);
@@ -326,8 +330,6 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
     }
   }
 
-  cudaStream_t strm;
-  cudaStreamCreate(&strm);
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
     for (int i = 0; i < nodes_.size(); ++i) {
@@ -335,7 +337,8 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
         AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
         switch (*ntype) {
           case cudaGraphNodeTypeKernel:
-            AT_CUDA_CHECK(cudaGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp));
+            cuStatus = cuGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp);
+            assert(cuStatus == CUDA_SUCCESS);
             break;
           case cudaGraphNodeTypeMemcpy:
             AT_CUDA_CHECK(cudaGraphExecMemcpyNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemcpyNp));
@@ -357,9 +360,9 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
   }
 
   // TODO: check whether set cuda stream correctly
-  printf("%s\n", cudaGetErrorString(cudaGetLastError()));
-  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, strm));
-  printf("HAS LAUNCH FUSED GRAGH !!!\n");
+  // printf("%s\n", cudaGetErrorString(cudaGetLastError()));
+  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, at::cuda::getCurrentCUDAStream()));
+  // printf("HAS LAUNCH FUSED GRAGH !!!\n");
 
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");

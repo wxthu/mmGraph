@@ -85,7 +85,7 @@ struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
   // The number of node type is related to cudatoolkit version
   union NODEParams {
     cudaHostNodeParams HostNp;
-    cudaKernelNodeParams KernelNp;
+    CUDA_KERNEL_NODE_PARAMS KernelNp; // driver API
     cudaMemcpy3DParms MemcpyNp;
     cudaMemsetParams MemsetNp;
   };

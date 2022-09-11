@@ -448,6 +448,7 @@ if(USE_CUDA AND NOT USE_ROCM)
     list(APPEND ATen_CUDA_DEPENDENCY_LIBS "${CUDA_TOOLKIT_ROOT_DIR}/lib64/libculibos.a")
     list(APPEND ATen_CUDA_DEPENDENCY_LIBS "${CUDA_TOOLKIT_ROOT_DIR}/lib64/libcudart_static.a")
   endif($ENV{ATEN_STATIC_CUDA})
+  list(APPEND ATen_CUDA_DEPENDENCY_LIBS "/usr/lib/x86_64-linux-gnu/libcuda.so")
 endif()
 
 
