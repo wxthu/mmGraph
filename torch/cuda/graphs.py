@@ -113,6 +113,9 @@ class CUDAFusedGraph(torch._C._CUDAFusedGraph):
         
     def build_graph(self, cuGraph):
         super(CUDAFusedGraph, self).build_graph(cuGraph)
+        
+    def launch_graph(self, count):
+        super(CUDAFusedGraph, self).launch_graph(count)
 
 class graph(object):
     r"""

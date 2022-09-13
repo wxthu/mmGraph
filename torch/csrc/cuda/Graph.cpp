@@ -59,5 +59,10 @@ void THCPGraph_init(PyObject *module) {
            "build_graph",
            &::at::cuda::CUDAFusedGraph::build_graph,
            py::call_guard<py::gil_scoped_release>(),
-           py::arg("cuGraph") = std::vector<std::shared_ptr<::at::cuda::CUDAGraph>>());
+           py::arg("cuGraph") = std::vector<std::shared_ptr<::at::cuda::CUDAGraph>>())
+      .def(
+           "launch_graph",
+           &::at::cuda::CUDAFusedGraph::launch_graph,
+           py::call_guard<py::gil_scoped_release>(),
+           py::arg("count") = int(1));
 }

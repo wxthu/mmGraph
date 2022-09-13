@@ -81,6 +81,7 @@ struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
   void reset();
   void extract_nodes(size_t id);  // not encapsulated into python interface
   void build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph);
+  void launch_graph(int count);
 
   // The number of node type is related to cudatoolkit version
   union NODEParams {

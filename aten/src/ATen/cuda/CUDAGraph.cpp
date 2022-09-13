@@ -359,11 +359,18 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
     create_big_graph_ = true;
   }
 
-  // TODO: check whether set cuda stream correctly
-  // printf("%s\n", cudaGetErrorString(cudaGetLastError()));
-  AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, at::cuda::getCurrentCUDAStream()));
-  // printf("HAS LAUNCH FUSED GRAGH !!!\n");
+#else
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
+}
 
+void CUDAFusedGraph::launch_graph(int count) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  // TODO: check whether set cuda stream correctly
+  for (int i = 0; i < count; ++i) {
+    AT_CUDA_CHECK(cudaGraphLaunch(bg_exec_, at::cuda::getCurrentCUDAStream()));
+    // printf("HAS LAUNCH FUSED GRAGH !!!\n");
+  }
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
