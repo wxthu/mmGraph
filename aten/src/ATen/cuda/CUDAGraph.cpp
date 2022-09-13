@@ -289,7 +289,7 @@ void CUDAFusedGraph::extract_nodes(size_t id) {
 }
 
 void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
-#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+// #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   for (auto& g : cuGraph) {
     subGraphs_.push_back(g->graph_);
     numNodes_.push_back(0);
@@ -300,28 +300,42 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
   }
   
   // build fused graph
-  cudaGraphNode_t* nodeDependencies;
+  std::vector<cudaGraphNode_t> nodeDependencies;
   CUresult cuStatus;
-  size_t dNum = 0;
+  size_t numDepend;
   cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
-  for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
-    for (int j = 0; j < numNodes_.at(i); ++j) {  // each node in current subgraph
-      nodeDependencies = j == 0 ? NULL : (nodes_.at(i) + j - 1);
-      dNum = j == 0 ? 0 : 1;
+  
+  size_t max_node_num = *std::max_element(numNodes_.begin(), numNodes_.end());
+  for (int j = 0; j < max_node_num; ++j) {  // node index to be alligned
+    for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
+      nodeDependencies.clear();
+      numDepend = 0;
+      if (j != 0) {
+        if (j >= numNodes_.at(i)) {
+          continue;
+        }
+        for (int k = 0; k < nodes_.size(); ++k) {
+          if (j - 1 < numNodes_.at(k)) {
+            nodeDependencies.push_back(*(nodes_.at(k) + j - 1));
+            ++numDepend;
+          }
+        }
+      }
+
       AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
       switch (*ntype) {
         case cudaGraphNodeTypeKernel:
-          cuStatus = cuGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->KernelNp);
+          cuStatus = cuGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodeDependencies.data(), numDepend, &(nodesParams_.at(i) + j)->KernelNp);
           assert(cuStatus == CUDA_SUCCESS);
           break;
         case cudaGraphNodeTypeMemcpy:
-          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemcpyNp));
+          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i) + j, bigGraph_, nodeDependencies.data(), numDepend, &(nodesParams_.at(i) + j)->MemcpyNp));
           break;
         case cudaGraphNodeTypeMemset:
-          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemsetNp));
+          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i) + j, bigGraph_, nodeDependencies.data(), numDepend, &(nodesParams_.at(i) + j)->MemsetNp));
           break;
         case cudaGraphNodeTypeHost:
-          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->HostNp));
+          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i) + j, bigGraph_, nodeDependencies.data(), numDepend, &(nodesParams_.at(i) + j)->HostNp));
           break;
         default:
           printf("unsupported node type : %d when adding node\n", *ntype);
@@ -359,9 +373,9 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
     create_big_graph_ = true;
   }
 
-#else
-  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
-#endif
+// #else
+//   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+// #endif
 }
 
 void CUDAFusedGraph::launch_graph(int count) {
