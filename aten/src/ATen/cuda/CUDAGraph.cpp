@@ -289,7 +289,7 @@ void CUDAFusedGraph::extract_nodes(size_t id) {
 }
 
 void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
-// #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   for (auto& g : cuGraph) {
     subGraphs_.push_back(g->graph_);
     numNodes_.push_back(0);
@@ -373,9 +373,9 @@ void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph
     create_big_graph_ = true;
   }
 
-// #else
-//   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
-// #endif
+#else
+  TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
+#endif
 }
 
 void CUDAFusedGraph::launch_graph(int count) {
