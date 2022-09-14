@@ -98,7 +98,7 @@ private:
   std::vector<NODEParams*> nodesParams_;
   cudaGraph_t bigGraph_;
   cudaGraphExec_t bg_exec_;
-  bool create_big_graph_;
+  bool create_big_graph_ = false;
 };
 
 } // namespace cuda
