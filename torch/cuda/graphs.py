@@ -102,17 +102,17 @@ class CUDAGraph(torch._C._CUDAGraph):
         return super(CUDAGraph, self).pool()
 
 class CUDAFusedGraph(torch._C._CUDAFusedGraph):
-    def __new__(cls):
-        return super(CUDAFusedGraph, cls).__new__(cls)
+    def __new__(cls, graphs):
+        return super(CUDAFusedGraph, cls).__new__(cls, graphs)
 
-    def __init__(self):
-        super(CUDAFusedGraph, self).__init__()    
+    def __init__(self, graphs):
+        super(CUDAFusedGraph, self).__init__(graphs)    
         
     def reset(self):
         super(CUDAFusedGraph, self).reset()
         
-    def build_graph(self, cuGraph):
-        super(CUDAFusedGraph, self).build_graph(cuGraph)
+    def build_graph(self):
+        super(CUDAFusedGraph, self).build_graph()
         
     def launch_graph(self, count):
         super(CUDAFusedGraph, self).launch_graph(count)

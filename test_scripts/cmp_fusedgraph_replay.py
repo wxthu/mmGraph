@@ -42,8 +42,8 @@ if __name__ == '__main__':
     with torch.cuda.graph(g2):
         out2 = model2(im2)
         
-    fg = torch.cuda.CUDAFusedGraph()
-    fg.build_graph([g1, g2])
+    fg = torch.cuda.CUDAFusedGraph([g1, g2])
+    fg.build_graph()
     with nvtx.annotate("fused_graph", color='red'):
         fg.launch_graph(round)
         torch.cuda.synchronize()

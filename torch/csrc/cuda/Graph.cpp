@@ -50,7 +50,7 @@ void THCPGraph_init(PyObject *module) {
            py::call_guard<py::gil_scoped_release>());
 
   shared_ptr_class_<::at::cuda::CUDAFusedGraph>(torch_C_m, "_CUDAFusedGraph")
-      .def(py::init<>())
+      .def(py::init<std::vector<std::shared_ptr<::at::cuda::CUDAGraph>>>())
       .def(
            "reset",
            &::at::cuda::CUDAFusedGraph::reset,
@@ -58,11 +58,10 @@ void THCPGraph_init(PyObject *module) {
       .def(
            "build_graph",
            &::at::cuda::CUDAFusedGraph::build_graph,
-           py::call_guard<py::gil_scoped_release>(),
-           py::arg("cuGraph") = std::vector<std::shared_ptr<::at::cuda::CUDAGraph>>())
+           py::call_guard<py::gil_scoped_release>())
       .def(
            "launch_graph",
            &::at::cuda::CUDAFusedGraph::launch_graph,
            py::call_guard<py::gil_scoped_release>(),
-           py::arg("count") = int(1));
+           py::arg("count") = 1);
 }
