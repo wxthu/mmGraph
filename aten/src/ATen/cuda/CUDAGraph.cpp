@@ -341,30 +341,30 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
 
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
-    for (int i = 0; i < nodes_.size(); ++i) {
-      for (int j = 0; j < numNodes_.at(i); ++j) {
-        AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
-        switch (*ntype) {
-          case cudaGraphNodeTypeKernel:
-            cuStatus = cuGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp);
-            assert(cuStatus == CUDA_SUCCESS);
-            break;
-          case cudaGraphNodeTypeMemcpy:
-            AT_CUDA_CHECK(cudaGraphExecMemcpyNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemcpyNp));
-            break;
-          case cudaGraphNodeTypeMemset:
-            AT_CUDA_CHECK(cudaGraphExecMemsetNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemsetNp));
-            break;
-          case cudaGraphNodeTypeHost:
-            AT_CUDA_CHECK(cudaGraphExecHostNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->HostNp));
-            break;
-          default:
-            printf("unsupported node type : %d when setting params\n", *ntype);
-            break;
-        }
+    // for (int i = 0; i < nodes_.size(); ++i) {
+    //   for (int j = 0; j < numNodes_.at(i); ++j) {
+    //     AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
+    //     switch (*ntype) {
+    //       case cudaGraphNodeTypeKernel:
+    //         cuStatus = cuGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp);
+    //         assert(cuStatus == CUDA_SUCCESS);
+    //         break;
+    //       case cudaGraphNodeTypeMemcpy:
+    //         AT_CUDA_CHECK(cudaGraphExecMemcpyNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemcpyNp));
+    //         break;
+    //       case cudaGraphNodeTypeMemset:
+    //         AT_CUDA_CHECK(cudaGraphExecMemsetNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemsetNp));
+    //         break;
+    //       case cudaGraphNodeTypeHost:
+    //         AT_CUDA_CHECK(cudaGraphExecHostNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->HostNp));
+    //         break;
+    //       default:
+    //         printf("unsupported node type : %d when setting params\n", *ntype);
+    //         break;
+    //     }
         
-      }
-    }
+    //   }
+    // }
     create_big_graph_ = true;
   }
 }
@@ -380,11 +380,8 @@ void CUDAFusedGraph::build_graph_by_adding_child_graph() {
  
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
-    for (int i = 0; i < nodes_.size(); ++i) {
-      for (int j = 0; j < numNodes_.at(i); ++j) {
-        AT_CUDA_CHECK(cudaGraphExecChildGraphNodeSetParams(bg_exec_, *(nodes_.at(i) + j), subGraphs_.at(i)));
-      }
-    }
+    // we do not need to set params for nodes because when extracting nodes
+    // from subgraphs, we also get corresponding params
     create_big_graph_ = true;
   }
 }
