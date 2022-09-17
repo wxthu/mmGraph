@@ -111,8 +111,11 @@ class CUDAFusedGraph(torch._C._CUDAFusedGraph):
     def reset(self):
         super(CUDAFusedGraph, self).reset()
         
-    def build_graph(self, cuGraph):
-        super(CUDAFusedGraph, self).build_graph(cuGraph)
+    def build_graph(self, cuGraph, flag=0):
+        r"""
+        The way building fused graph is determined by argument 'flag'
+        """
+        super(CUDAFusedGraph, self).build_graph(cuGraph, flag)
         
     def launch_graph(self, count):
         super(CUDAFusedGraph, self).launch_graph(count)
