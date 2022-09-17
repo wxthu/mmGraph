@@ -245,8 +245,14 @@ CUDAGraph::~CUDAGraph() {
   reset();
 }
 
-CUDAFusedGraph::CUDAFusedGraph() {
-#if (defined(CUDA_VERSION) && CUDA_VERSION < 11000) || defined(USE_ROCM)
+CUDAFusedGraph::CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
+  for (auto& g : cuGraph) {
+    subGraphs_.push_back(g->graph_);
+    numNodes_.push_back(0);
+  }
+  AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
+#else 
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
 }
@@ -284,24 +290,20 @@ void CUDAFusedGraph::extract_nodes(size_t id) {
   nodesParams_.push_back(curr_np);
 }
 
-void CUDAFusedGraph::build_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph, int flag) {
+void CUDAFusedGraph::build_graph(int flag) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   if (flag == 0) {
-    build_graph_by_parsing_child_graph(cuGraph);
+    build_graph_by_parsing_child_graph();
   } else {
-    build_graph_by_adding_child_graph(cuGraph);
+    build_graph_by_adding_child_graph();
   }
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
 }
 
-void CUDAFusedGraph::build_graph_by_parsing_child_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
-  for (auto& g : cuGraph) {
-    subGraphs_.push_back(g->graph_);
-    numNodes_.push_back(0);
-  }
-  AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
+void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
+
   for (size_t index = 0; index < subGraphs_.size(); ++index) {
     extract_nodes(index);
   }
@@ -367,13 +369,8 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph(std::vector<std::shared_
   }
 }
 
-void CUDAFusedGraph::build_graph_by_adding_child_graph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
-  for (auto& g : cuGraph) {
-    subGraphs_.push_back(g->graph_);
-    numNodes_.push_back(0);
-  }
-
-  AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
+void CUDAFusedGraph::build_graph_by_adding_child_graph() {
+  
   for (size_t ind = 0; ind < subGraphs_.size(); ++ind) {
     AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(ind), NULL, &numNodes_.at(ind)));
     cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes_.at(ind));
