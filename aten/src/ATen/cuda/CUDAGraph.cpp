@@ -253,10 +253,12 @@ CUDAFusedGraph::CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph,
     numNodes_.push_back(0);
   }
   AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
-  for (size_t i = 0; i < gps.size(); ++i) {
-    groups.push_back(std::vector<bool>(subGraphs_.size(), false));
-    for (int ind : gps[i]) {
-      groups[i].at(ind) = true;
+  if (!gps.empty()) {
+    for (size_t i = 0; i < gps.size(); ++i) {
+      groups.push_back(std::vector<bool>(subGraphs_.size(), false));
+      for (int ind : gps[i]) {
+        groups[i].at(ind) = true;
+      }
     }
   }
 #else 

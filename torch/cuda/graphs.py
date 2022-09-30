@@ -102,10 +102,10 @@ class CUDAGraph(torch._C._CUDAGraph):
         return super(CUDAGraph, self).pool()
 
 class CUDAFusedGraph(torch._C._CUDAFusedGraph):
-    def __new__(cls, graphs, groups):
+    def __new__(cls, graphs, groups=[]):
         return super(CUDAFusedGraph, cls).__new__(cls, graphs, groups)
 
-    def __init__(self, graphs, groups):
+    def __init__(self, graphs, groups=[]):
         super(CUDAFusedGraph, self).__init__(graphs, groups)    
         
     def reset(self):

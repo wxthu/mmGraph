@@ -76,8 +76,8 @@ def dp_solver(model_num):
     with open("../profiling/properties.json", "r") as f:
         data = json.load(f)
         for i, (key, val) in enumerate(data.items()):
-            if i == N:
-                break
+            if i < 4:
+                continue
             c.append([0.0] + val['compute'])
             m.append([0.0] + val['memory'])
             l.append([0.0] + val['latency'])
