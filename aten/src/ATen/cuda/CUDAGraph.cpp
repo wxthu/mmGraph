@@ -245,13 +245,20 @@ CUDAGraph::~CUDAGraph() {
   reset();
 }
 
-CUDAFusedGraph::CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph) {
+CUDAFusedGraph::CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph,
+                               std::vector<std::vector<int>> gps) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   for (auto& g : cuGraph) {
     subGraphs_.push_back(g->graph_);
     numNodes_.push_back(0);
   }
   AT_CUDA_CHECK(cudaGraphCreate(&bigGraph_, 0));
+  for (size_t i = 0; i < gps.size(); ++i) {
+    groups.push_back(std::vector<bool>(subGraphs_.size(), false));
+    for (int ind : gps[i]) {
+      groups[i].at(ind) = true;
+    }
+  }
 #else 
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
 #endif
@@ -309,62 +316,52 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
   }
   
   // build fused graph
-  cudaGraphNode_t* nodeDependencies;
-  CUresult cuStatus;
-  size_t dNum = 0;
+  std::vector<cudaGraphNode_t> nodeDependencies;
+  size_t numDepends = 0;
   cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
-  for (int i = 0; i < nodes_.size(); ++i) {  // each subgraph
-    for (int j = 0; j < numNodes_.at(i); ++j) {  // each node in current subgraph
-      nodeDependencies = j == 0 ? NULL : (nodes_.at(i) + j - 1);
-      dNum = j == 0 ? 0 : 1;
-      AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
-      switch (*ntype) {
+
+  // Temporary variable to indicate kernel indices in current group 
+  std::vector<int> kIndices(subGraphs_.size(), -1); 
+  for (size_t i = 0; i < groups.size(); ++i) {
+    for (size_t j = 0; j < subGraphs_.size(); ++j) {
+      if (groups[i][j]) {
+        kIndices[j]++;
+        AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[j] + kIndices[j]), ntype));
+        switch (*ntype)
+        {
         case cudaGraphNodeTypeKernel:
-          cuStatus = cuGraphAddKernelNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->KernelNp);
+          CUresult cuStatus;
+          cuStatus = cuGraphAddKernelNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->KernelNp);
           assert(cuStatus == CUDA_SUCCESS);
           break;
         case cudaGraphNodeTypeMemcpy:
-          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemcpyNp));
+          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemcpyNp));
           break;
         case cudaGraphNodeTypeMemset:
-          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->MemsetNp));
+          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemsetNp));
           break;
         case cudaGraphNodeTypeHost:
-          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_.at(i) + j, bigGraph_, nodeDependencies, dNum, &(nodesParams_.at(i) + j)->HostNp));
+          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->HostNp));
           break;
         default:
           printf("unsupported node type : %d when adding node\n", *ntype);
           break;
+        }
+      } 
+    }
+
+    nodeDependencies.clear();
+    numDepends = 0;
+    for (size_t j = 0; j < subGraphs_.size(); ++j) {
+      if (groups[i][j]) {
+        nodeDependencies.push_back(*(nodes_[j] + kIndices[j]));
+        ++numDepends;
       }
     }
   }
 
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
-    // for (int i = 0; i < nodes_.size(); ++i) {
-    //   for (int j = 0; j < numNodes_.at(i); ++j) {
-    //     AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_.at(i) + j), ntype));
-    //     switch (*ntype) {
-    //       case cudaGraphNodeTypeKernel:
-    //         cuStatus = cuGraphExecKernelNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->KernelNp);
-    //         assert(cuStatus == CUDA_SUCCESS);
-    //         break;
-    //       case cudaGraphNodeTypeMemcpy:
-    //         AT_CUDA_CHECK(cudaGraphExecMemcpyNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemcpyNp));
-    //         break;
-    //       case cudaGraphNodeTypeMemset:
-    //         AT_CUDA_CHECK(cudaGraphExecMemsetNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->MemsetNp));
-    //         break;
-    //       case cudaGraphNodeTypeHost:
-    //         AT_CUDA_CHECK(cudaGraphExecHostNodeSetParams(bg_exec_, *(nodes_.at(i) + j), &(nodesParams_.at(i) + j)->HostNp));
-    //         break;
-    //       default:
-    //         printf("unsupported node type : %d when setting params\n", *ntype);
-    //         break;
-    //     }
-        
-    //   }
-    // }
     create_big_graph_ = true;
   }
 }

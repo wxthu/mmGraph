@@ -76,7 +76,8 @@ struct TORCH_CUDA_CPP_API CUDAGraph {
 };
 
 struct TORCH_CUDA_CPP_API CUDAFusedGraph final {   // mmGraph
-  CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph);
+  CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph,
+                  std::vector<std::vector<int>> gps);
   ~CUDAFusedGraph();
   void reset();
   void extract_nodes(size_t id);  // not encapsulated into python interface
@@ -101,6 +102,7 @@ private:
   cudaGraph_t bigGraph_;
   cudaGraphExec_t bg_exec_;
   bool create_big_graph_ = false;
+  std::vector<std::vector<bool>> groups;
 };
 
 } // namespace cuda
