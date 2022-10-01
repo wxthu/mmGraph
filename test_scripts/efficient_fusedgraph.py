@@ -14,7 +14,7 @@ if __name__ == '__main__':
     im2 = torch.randn(1, 3, 224, 224).cuda()
     
     groups = dp_solver(2)
-    round = 500
+    round = 1000
     for _ in range(20):
         pred = model1(im1)
         pred = model2(im2)

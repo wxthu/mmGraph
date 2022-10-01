@@ -303,8 +303,10 @@ void CUDAFusedGraph::build_graph(int flag) {
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11000
   if (flag == 0) {
     build_graph_by_parsing_child_graph();
-  } else {
+  } else if (flag == 1) {
     build_graph_by_adding_child_graph();
+  } else {
+    build_graph_by_sequential_order();
   }
 #else
   TORCH_CHECK(false, "CUDA graphs may only be used in Pytorch built with CUDA >= 11.0 and not yet supported on ROCM");
@@ -374,9 +376,30 @@ void CUDAFusedGraph::build_graph_by_adding_child_graph() {
     AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(ind), NULL, &numNodes_.at(ind)));
     cudaGraphNode_t* curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes_.at(ind));
     AT_CUDA_CHECK(cudaGraphAddChildGraphNode(curr_nodes, bigGraph_, NULL, 0, subGraphs_.at(ind)));
-    nodes_.push_back(curr_nodes);
+    // nodes_.push_back(curr_nodes);
   }
  
+  if (!create_big_graph_) {
+    AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
+    // we do not need to set params for nodes because when extracting nodes
+    // from subgraphs, we also get corresponding params
+    create_big_graph_ = true;
+  }
+}
+
+void CUDAFusedGraph::build_graph_by_sequential_order() {
+  cudaGraphNode_t* nodeDependencies = NULL;
+  cudaGraphNode_t* curr_nodes;
+  size_t numDepend = 0;
+  for (size_t ind = 0; ind < subGraphs_.size(); ++ind) {
+    AT_CUDA_CHECK(cudaGraphGetNodes(subGraphs_.at(ind), NULL, &numNodes_.at(ind)));
+    curr_nodes = (cudaGraphNode_t*)malloc(sizeof(cudaGraphNode_t) * numNodes_.at(ind));
+    AT_CUDA_CHECK(cudaGraphAddChildGraphNode(curr_nodes, bigGraph_, nodeDependencies, numDepend, subGraphs_.at(ind)));
+
+    nodeDependencies = curr_nodes;
+    numDepend = 1;
+  }
+
   if (!create_big_graph_) {
     AT_CUDA_CHECK(cudaGraphInstantiate(&bg_exec_, bigGraph_, NULL, NULL, 0));
     // we do not need to set params for nodes because when extracting nodes
