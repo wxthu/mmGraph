@@ -30,16 +30,24 @@ if __name__ == '__main__':
         
     fg1 = torch.cuda.CUDAFusedGraph([g1, g2], groups)
     fg1.build_graph()
-    with nvtx.annotate("with_plan", color='red'):
-        fg1.launch_graph(round)
-        torch.cuda.synchronize()
+    range_id = nvtx.start_range("with_plan", color='red')
+    fg1.launch_graph(round)
+    torch.cuda.synchronize()
+    nvtx.end_range(range_id)
         
     fg2 = torch.cuda.CUDAFusedGraph([g1, g2])
     fg2.build_graph(1)
-    with nvtx.annotate("no_plan", color='blue'):
-        fg2.launch_graph(round)
-        torch.cuda.synchronize()
+    range_id = nvtx.start_range("no_plan", color='blue')
+    fg2.launch_graph(round)
+    torch.cuda.synchronize()
+    nvtx.end_range(range_id)
     
+    fg3 = torch.cuda.CUDAFusedGraph([g1, g2])
+    fg3.build_graph(2)
+    range_id = nvtx.start_range("sequential", color='green')
+    fg3.launch_graph(round)
+    torch.cuda.synchronize()
+    nvtx.end_range(range_id)   
     
     
     
