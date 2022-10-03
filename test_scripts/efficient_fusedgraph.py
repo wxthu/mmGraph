@@ -28,6 +28,13 @@ if __name__ == '__main__':
     with torch.cuda.graph(g2):
         out2 = model2(im2)
         
+    fg3 = torch.cuda.CUDAFusedGraph([g1, g2])
+    fg3.build_graph(2)
+    range_id = nvtx.start_range("sequential", color='green')
+    fg3.launch_graph(round)
+    torch.cuda.synchronize()
+    nvtx.end_range(range_id)  
+    
     fg1 = torch.cuda.CUDAFusedGraph([g1, g2], groups)
     fg1.build_graph()
     range_id = nvtx.start_range("with_plan", color='red')
@@ -42,12 +49,7 @@ if __name__ == '__main__':
     torch.cuda.synchronize()
     nvtx.end_range(range_id)
     
-    fg3 = torch.cuda.CUDAFusedGraph([g1, g2])
-    fg3.build_graph(2)
-    range_id = nvtx.start_range("sequential", color='green')
-    fg3.launch_graph(round)
-    torch.cuda.synchronize()
-    nvtx.end_range(range_id)   
+     
     
     
     
