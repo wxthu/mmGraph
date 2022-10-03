@@ -1,5 +1,7 @@
 
 import gurobipy as gp
+import itertools
+import numpy as np
 import json
 
 def ilp_solver(model_num):
@@ -76,7 +78,7 @@ def dp_solver(model_num):
     with open("../profiling/properties.json", "r") as f:
         data = json.load(f)
         for i, (key, val) in enumerate(data.items()):
-            if i < 4:
+            if i >= N:
                 continue
             c.append([0.0] + val['compute'])
             m.append([0.0] + val['memory'])
@@ -90,88 +92,49 @@ def dp_solver(model_num):
                 c[i][j] = 99.9
             if m[i][j] >= 100.0:
                 m[i][j] = 99.9
-                
-    dp = [[0.0 for j in range(nKernel[1] + 1)] for i in range(nKernel[0] + 1)]
-    for j in range(1, nKernel[1] + 1):
-        dp[0][j] = sum([l[1][k] for k in range(1, j+1)])
     
-    for j in range(1, nKernel[0] + 1):
-        dp[j][0] = sum([l[0][k] for k in range(1, j+1)])
+    dp = np.zeros(list(x+1 for x in nKernel))    
+    for i in range(len(nKernel)):
+        lIndex = [0] * len(nKernel)
+        lIndex[i] = slice(None, None, None)
+        lat = [sum(l[i][:k+1]) for k in range(0, nKernel[i]+1)]
+        dp[tuple(lIndex)] = np.array(lat)       
+    
+    def calc_tmp(iCurr, iSolo):
+        iPrev = [x-y if x-y > 0 else 0 for x, y in zip(iCurr, iSolo)]
+        pairs = [[i, iCurr[i]]for i in range(N) if iSolo[i] != 0]
         
-    def calc_tmp(i, j):
-        lat1 = dp[i-1][j] + l[0][i]
-        lat2 = dp[i][j-1] + l[1][j]
-        
-        if c[0][i] + c[1][j] <= 100.0 and m[0][i] + m[1][j] <= 100.0:
-            lat3 = dp[i-1][j-1] + max(l[0][i], l[1][j])
+        if sum([c[i][j] for i, j in pairs]) <= 100.0 and sum([m[i][j] for i, j in pairs]) <= 100.0:
+            return dp[tuple(iPrev)] + max([l[i][j] for i, j in pairs])
         else:
-            lat3 = float("inf")
+            return float("inf")   
             
-        return lat1, lat2, lat3
-            
-    for i in range(1, nKernel[0] + 1):
-        for j in range(1, nKernel[1] + 1):
-            lat1, lat2, lat3 = calc_tmp(i, j)
-            dp[i][j] = min(lat1, lat2, lat3)
+    for iCurr in itertools.product(*[range(0, x+1) for x in nKernel]):
+        states = []
+        for iSolo in itertools.product([0, 1], repeat=N):
+            if any(iSolo):
+                tmp = calc_tmp(iCurr, iSolo)
+                states.append(tmp)
+                
+        dp[tuple(iCurr)] = min(states)
             
     # reversed lookup
-    g1 = [0 for _ in range(nKernel[0] + 1)]
-    g2 = [0 for _ in range(nKernel[1] + 1)]
-    row = nKernel[0]
-    col = nKernel[1]
-    gIndex = 1
-    
-    while row != 0 and col != 0:
-        tmp1, tmp2, tmp3 = calc_tmp(row, col)
-        lat = dp[row][col]
-        if lat == tmp1:
-            g1[row] = gIndex
-            row -= 1
-        elif lat == tmp2:
-            g2[col] = gIndex
-            col -= 1
-        elif lat == tmp3:
-            g1[row] = gIndex
-            g2[col] = gIndex 
-            row -= 1
-            col -= 1 
-        else: 
-            assert False
-        gIndex += 1
-    
-    while row > 0:
-        g1[row] = gIndex
-        gIndex += 1
-        row -= 1
-    while col > 0:
-        g2[col] = gIndex
-        gIndex += 1
-        col -= 1
-     
-    # merge
-    cursor1 = 1
-    cursor2 = 1
-
     groups = []
-    while cursor1 < len(g1) and cursor2 < len(g2):
-        if g1[cursor1] == g2[cursor2]:
-            groups.append([0, 1])
-            cursor1 += 1
-            cursor2 += 1
-        elif g1[cursor1] > g2[cursor2]:
-            groups.append([0])
-            cursor1 += 1
-        else:
-            groups.append([1])
-            cursor2 += 1
-            
-    while cursor1 < len(g1):
-        groups.append([0])
-        cursor1 += 1
+    next_id = None
+    for iCurr in itertools.product(*[range(x, -1, -1) for x in nKernel]):
+        if sum(iCurr) == 0:
+            break
         
-    while cursor2 < len(g2):
-        groups.append([1])
-        cursor2 += 1
-        
+        if next_id is not None:
+            if iCurr != next_id:
+                continue
+                
+        for iSolo in itertools.product([0, 1], repeat=N):
+            if any(iSolo):
+                if dp[tuple(iCurr)] == calc_tmp(iCurr, iSolo):
+                    groups.append(iSolo)
+                    next_id = tuple([x-y if x-y > 0 else 0 for x, y in zip(iCurr, iSolo)])
+                    break
+    groups.reverse()
     return groups
     

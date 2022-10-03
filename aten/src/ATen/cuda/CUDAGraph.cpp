@@ -256,8 +256,9 @@ CUDAFusedGraph::CUDAFusedGraph(std::vector<std::shared_ptr<CUDAGraph>> cuGraph,
   if (!gps.empty()) {
     for (size_t i = 0; i < gps.size(); ++i) {
       groups.push_back(std::vector<bool>(subGraphs_.size(), false));
-      for (int ind : gps[i]) {
-        groups[i].at(ind) = true;
+      for (size_t j = 0; j < gps[i].size(); ++j) {
+        if (gps[i][j] > 0)
+          groups[i].at(j) = true;
       }
     }
   }
