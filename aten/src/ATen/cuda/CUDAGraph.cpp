@@ -323,49 +323,36 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
   // build fused graph
   std::vector<cudaGraphNode_t> nodeDependencies;
   size_t numDepends = 0;
+  CUresult cuStatus;
   cudaGraphNodeType* ntype = (cudaGraphNodeType*)malloc(sizeof(cudaGraphNodeType));
-
-  // Temporary variable to indicate kernel indices in current group 
-  std::vector<int> kIndices(subGraphs_.size(), -1); 
-  for (size_t i = 0; i < groups.size(); ++i) {
-    for (size_t j = 0; j < subGraphs_.size(); ++j) {
-      if (groups[i][j]) {
-        kIndices[j]++;
-        AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[j] + kIndices[j]), ntype));
-        while (*ntype != cudaGraphNodeTypeKernel && kIndices[j] < numNodes_[j]) {
-          switch (*ntype) {
-            case cudaGraphNodeTypeMemcpy:
-              AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemcpyNp));
-              break;
-            case cudaGraphNodeTypeMemset:
-              AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemsetNp));
-              break;
-            case cudaGraphNodeTypeHost:
-              AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->HostNp));
-              break;
-            default:
-              printf("unsupported node type : %d when adding node\n", *ntype);
-              break;
-          }
-          kIndices[j]++;
-          AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[j] + kIndices[j]), ntype));
-        }
-
-        if (kIndices[j] < numNodes_[j]) {
-          CUresult cuStatus = cuGraphAddKernelNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), 
-                                                    numDepends, &(nodesParams_[j] + kIndices[j])->KernelNp);
+  
+  for (size_t i = 0; i < subGraphs_.size(); ++i) {
+    for (size_t j = 0; j < numNodes_[i]; ++j) {
+        
+      AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[i] + j), ntype));
+      switch (*ntype) {
+        case cudaGraphNodeTypeKernel:
+          cuStatus = cuGraphAddKernelNode(nodes_[i] + j, bigGraph_, nodeDependencies.data(), 
+                                          numDepends, &(nodesParams_[i] + j)->KernelNp);
           assert(cuStatus == CUDA_SUCCESS);
-        }
-      } 
-    }
-
-    nodeDependencies.clear();
-    numDepends = 0;
-    for (size_t j = 0; j < subGraphs_.size(); ++j) {
-      if (groups[i][j]) {
-        nodeDependencies.push_back(*(nodes_[j] + kIndices[j]));
-        ++numDepends;
+          break;
+        case cudaGraphNodeTypeMemcpy:
+          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_[i] + j, bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[i] + j)->MemcpyNp));
+          break;
+        case cudaGraphNodeTypeMemset:
+          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_[i] + j, bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[i] + j)->MemsetNp));
+          break;
+        case cudaGraphNodeTypeHost:
+          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_[i] + j, bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[i] + j)->HostNp));
+          break;
+        default:
+          printf("unsupported node type : %d when adding node\n", *ntype);
+          break;
       }
+      
+      nodeDependencies.clear();
+      nodeDependencies.push_back(*(nodes_[i] + j));
+      numDepends = 1;
     }
   }
 
