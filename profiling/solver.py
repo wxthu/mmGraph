@@ -15,7 +15,7 @@ def ilp_solver(model_num):
 
     nKernel = list()
 
-    with open("properties.json", "r") as f:
+    with open("../profiling/properties.json", "r") as f:
         data = json.load(f)
         for key, val in data.items():
             c.append(val['compute'])
@@ -66,8 +66,8 @@ def ilp_solver(model_num):
         
     MODEL.optimize()
     
-def dp_solver(model_num):
-    N = model_num
+def dp_solver(model_list):
+    N = len(model_list)
     # compute throught, memory throughput and latency for each kernel in different models
     c = list()
     m = list()
@@ -78,7 +78,7 @@ def dp_solver(model_num):
     with open("../profiling/properties.json", "r") as f:
         data = json.load(f)
         for i, (key, val) in enumerate(data.items()):
-            if i >= N:
+            if not i in model_list:
                 continue
             c.append([0.0] + val['compute'])
             m.append([0.0] + val['memory'])
@@ -102,14 +102,19 @@ def dp_solver(model_num):
     
     def calc_tmp(iCurr, iSolo):
         iPrev = [x-y if x-y > 0 else 0 for x, y in zip(iCurr, iSolo)]
-        pairs = [[i, iCurr[i]]for i in range(N) if iSolo[i] != 0]
+        pairs = [[i, iCurr[i]]for i in range(N) if iSolo[i] != 0 and iCurr[i] != 0]
         
-        if sum([c[i][j] for i, j in pairs]) <= 100.0 and sum([m[i][j] for i, j in pairs]) <= 100.0:
+        if len(pairs) > 0 \
+            and sum([c[i][j] for i, j in pairs]) <= 100.0 \
+            and sum([m[i][j] for i, j in pairs]) <= 100.0:
             return dp[tuple(iPrev)] + max([l[i][j] for i, j in pairs])
         else:
             return float("inf")   
             
     for iCurr in itertools.product(*[range(0, x+1) for x in nKernel]):
+        if iCurr.count(0) >= N-1:
+            continue
+        
         states = []
         for iSolo in itertools.product([0, 1], repeat=N):
             if any(iSolo):
@@ -135,6 +140,7 @@ def dp_solver(model_num):
                     groups.append(iSolo)
                     next_id = tuple([x-y if x-y > 0 else 0 for x, y in zip(iCurr, iSolo)])
                     break
+                
     groups.reverse()
     return groups
     
