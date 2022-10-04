@@ -332,25 +332,29 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
       if (groups[i][j]) {
         kIndices[j]++;
         AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[j] + kIndices[j]), ntype));
-        switch (*ntype)
-        {
-        case cudaGraphNodeTypeKernel:
-          CUresult cuStatus;
-          cuStatus = cuGraphAddKernelNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->KernelNp);
+        while (*ntype != cudaGraphNodeTypeKernel && kIndices[j] < numNodes_[j]) {
+          switch (*ntype) {
+            case cudaGraphNodeTypeMemcpy:
+              AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemcpyNp));
+              break;
+            case cudaGraphNodeTypeMemset:
+              AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemsetNp));
+              break;
+            case cudaGraphNodeTypeHost:
+              AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->HostNp));
+              break;
+            default:
+              printf("unsupported node type : %d when adding node\n", *ntype);
+              break;
+          }
+          kIndices[j]++;
+          AT_CUDA_CHECK(cudaGraphNodeGetType(*(nodes_[j] + kIndices[j]), ntype));
+        }
+
+        if (kIndices[j] < numNodes_[j]) {
+          CUresult cuStatus = cuGraphAddKernelNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), 
+                                                    numDepends, &(nodesParams_[j] + kIndices[j])->KernelNp);
           assert(cuStatus == CUDA_SUCCESS);
-          break;
-        case cudaGraphNodeTypeMemcpy:
-          AT_CUDA_CHECK(cudaGraphAddMemcpyNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemcpyNp));
-          break;
-        case cudaGraphNodeTypeMemset:
-          AT_CUDA_CHECK(cudaGraphAddMemsetNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->MemsetNp));
-          break;
-        case cudaGraphNodeTypeHost:
-          AT_CUDA_CHECK(cudaGraphAddHostNode(nodes_[j] + kIndices[j], bigGraph_, nodeDependencies.data(), numDepends, &(nodesParams_[j] + kIndices[j])->HostNp));
-          break;
-        default:
-          printf("unsupported node type : %d when adding node\n", *ntype);
-          break;
         }
       } 
     }
