@@ -354,6 +354,8 @@ void CUDAFusedGraph::build_graph_by_parsing_child_graph() {
       nodeDependencies.push_back(*(nodes_[i] + j));
       numDepends = 1;
     }
+    nodeDependencies.clear();
+    numDepends = 0;
   }
 
   if (!create_big_graph_) {
